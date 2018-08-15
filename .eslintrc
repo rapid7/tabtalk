@@ -9,6 +9,7 @@
   },
   "parser": "babel-eslint",
   "rules": {
+    "rapid7/no-trailing-underscore": 0,
     "no-unused-vars": [
       1,
       {
