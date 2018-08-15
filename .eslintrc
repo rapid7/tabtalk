@@ -1,0 +1,19 @@
+{
+  "extends": ["rapid7/browser", "rapid7/react"],
+  "globals": {
+    "__dirname": true,
+    "global": true,
+    "module": true,
+    "process": true,
+    "require": true
+  },
+  "parser": "babel-eslint",
+  "rules": {
+    "no-unused-vars": [
+      1,
+      {
+        "ignoreRestSiblings": true
+      }
+    ]
+  }
+}
