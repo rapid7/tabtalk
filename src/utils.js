@@ -1,3 +1,6 @@
+// constants
+import {SESSION_STORAGE_KEY} from './constants';
+
 export const assign = (target, ...sources) =>
   sources.reduce(
     (assigned, source) =>
@@ -8,3 +11,13 @@ export const assign = (target, ...sources) =>
       }, assigned),
     target
   );
+
+export const find = (fn, array) => {
+  for (let index = 0; index < array.length; index++) {
+    if (fn(array[index], index, array)) {
+      return array[index];
+    }
+  }
+};
+
+export const getChildWindowName = (childId, id) => `${SESSION_STORAGE_KEY}:CHILD_${childId}_OF_${id}`;

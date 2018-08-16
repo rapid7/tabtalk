@@ -1,18 +1,19 @@
-// constants
-import {
-  HAS_SESSION_STORAGE,
-  SESSION_STORAGE_KEY
-} from './constants';
+// external dependencies
+import {call} from 'unchanged';
 
-export const getStorageData = () => {
+// constants
+import {HAS_SESSION_STORAGE} from './constants';
+
+export const getStorageData = (key) => {
   if (!HAS_SESSION_STORAGE) {
     return null;
   }
 
-  const data = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+  const data = call(['getItem'], [key], window.sessionStorage);
 
   return data ? JSON.parse(data) : null;
 };
 
-export const setStorageData = (data) =>
-  HAS_SESSION_STORAGE ? window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data)) : null;
+export const removeStorageData = (key) => call(['removeItem'], [key], window.sessionStorage);
+
+export const setStorageData = (key, data) => call(['setItem'], [key, JSON.stringify(data)], window.sessionStorage);
