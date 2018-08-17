@@ -48,7 +48,7 @@ export const TAB_STATUS = {
  */
 export const DEFAULT_CONFIG = {
   isInIframe: false,
-  origin: window.origin,
+  origin: window.origin || document.domain || '*',
   pingCheckinBuffer: PING_CHECKIN_BUFFER,
   pingInterval: PING_INTERVAL,
   registrationBuffer: REGISTRATION_BUFFER,

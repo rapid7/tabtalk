@@ -70,6 +70,7 @@ class Tab {
     this.lastCheckin = null;
     this.lastParentCheckin = null;
     this.parent = ref.opener || null;
+    this.receivePingInterval = null;
     this.sendPingInterval = null;
     this.ref = ref;
     this.status = TAB_STATUS.OPEN;
@@ -85,7 +86,7 @@ class Tab {
 
     this.__clearPingIntervals();
 
-    this.receivePingInterval = this.__setReceivePingInterval();
+    this.__setReceivePingInterval();
 
     if (ref === window) {
       this.__addEventListeners();
@@ -550,8 +551,6 @@ class Tab {
    * @function close
    * @memberof Tab
    *
-   * @private
-   *
    * @description
    * close the child tab with the given id
    *
@@ -576,8 +575,6 @@ class Tab {
   /**
    * @function open
    * @memberof Tab
-   *
-   * @private
    *
    * @description
    * open the tab with the given options
@@ -605,8 +602,6 @@ class Tab {
    * @function sendToChild
    * @memberof Tab
    *
-   * @private
-   *
    * @description
    * send data to a specific child
    *
@@ -622,8 +617,6 @@ class Tab {
    * @function sendToChildren
    * @memberof Tab
    *
-   * @private
-   *
    * @description
    * send data to all children
    *
@@ -637,8 +630,6 @@ class Tab {
   /**
    * @function sendToParent
    * @memberof Tab
-   *
-   * @private
    *
    * @description
    * send data to the parent
