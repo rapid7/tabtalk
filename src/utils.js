@@ -12,10 +12,10 @@ import {SESSION_STORAGE_KEY} from './constants';
  * @returns {any} the mapped value
  */
 export const map = (fn, array) => {
-  let mapped = [];
+  let mapped = new Array(array.length);
 
   for (let index = 0; index < array.length; index++) {
-    mapped = fn(array[index], index, array);
+    mapped[index] = fn(array[index], index, array);
   }
 
   return mapped;
@@ -39,7 +39,7 @@ export const filter = (fn, array) => {
     result = fn(array[index], index, array);
 
     if (result) {
-      filtered.push(result);
+      filtered.push(array[index]);
     }
   }
 

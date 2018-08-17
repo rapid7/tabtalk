@@ -105,14 +105,14 @@ class Tab {
    * @type {Array<Tab>}
    */
   get closedChildren() {
-    return filter(this.__children, ({status}) => status === TAB_STATUS.CLOSED);
+    return filter(({status}) => status === TAB_STATUS.CLOSED, this.__children);
   }
 
   /**
    * @type {Array<Tab>}
    */
   get openChildren() {
-    return filter(this.__children, ({status}) => status === TAB_STATUS.OPEN);
+    return filter(({status}) => status === TAB_STATUS.OPEN, this.__children);
   }
 
   /**
@@ -541,7 +541,7 @@ class Tab {
       if (this.parent) {
         this.__sendToParent(EVENT.PING_PARENT, lastCheckin);
       } else if (this.__children.length) {
-        this.__children.forEach(({id}) => this.__sendToChild(id, EVENT.PING_CHILD, lastCheckin));
+        this.__sendToChildren(EVENT.PING_CHILD, lastCheckin);
       }
     }, getPingInterval(this.config));
   }
