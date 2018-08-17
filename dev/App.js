@@ -8,8 +8,12 @@ const tab = createTab({
   onChildCommunication(message) {
     console.log('child communication', message);
   },
-  onChildRegister(child) {
+  async onChildRegister(child) {
     console.log('child registered', child);
+
+    // await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // tab.close(child.id);
   },
   onParentClose() {
     console.log('parent closed');
@@ -17,8 +21,8 @@ const tab = createTab({
   onParentCommunication(message) {
     console.log('parent communication', message);
   },
-  onRegister(tab) {
-    console.log('registered', tab);
+  onRegister(registeredTab) {
+    console.log('registered', registeredTab);
   },
 });
 
