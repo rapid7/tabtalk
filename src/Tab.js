@@ -156,7 +156,7 @@ class Tab {
             this.__sendToParent(EVENT.SET_TAB_STATUS, TAB_STATUS.CLOSED);
           }
 
-          this.config.onClose();
+          call(['onClose'], [], this.config);
         },
       ],
       this.ref
