@@ -80,17 +80,17 @@ export const reduce = (fn, initialValue, array) => {
 export const assign = (target, ...sources) =>
   reduce(
     (assigned, source) =>
-      reduce(
-        (assigned, key) => {
-          if (source[key]) {
+      source
+        ? reduce(
+          (assigned, key) => {
             assigned[key] = source[key];
-          }
 
-          return assigned;
-        },
-        assigned,
-        Object.keys(source)
-      ),
+            return assigned;
+          },
+          assigned,
+          Object.keys(source)
+        )
+        : assigned,
     target,
     sources
   );
