@@ -467,7 +467,7 @@ class Tab {
    * @returns {Promise}
    */
   __sendToChildren(event, data = null) {
-    return Promise.all(map((child) => this.__sendToChild(child.id, event, data), this.openChildren));
+    return Promise.all(map(({id}) => this.__sendToChild(id, event, data), this.openChildren));
   }
 
   /**
