@@ -1,5 +1,5 @@
 // tabs
-import Tab from './Tab';
+import TabTalk from './TabTalk';
 
 /**
  * @function createTab
@@ -10,6 +10,6 @@ import Tab from './Tab';
  * @param {Object} [config={}] the configuration object
  * @returns {Tab} the generated tab
  */
-const createTab = (config = {}) => new Tab(config, {});
+const createTab = (config = {}) => new TabTalk(config, {});
 
 export default createTab;

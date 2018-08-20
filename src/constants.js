@@ -1,4 +1,9 @@
 /**
+ * @constant {string} ENCRYPTION_KEY
+ */
+export const ENCRYPTION_KEY = '__TABTALK_ENCRYPTION_KEY__';
+
+/**
  * @constant {Object} EVENT the events passed via postmessage
  */
 export const EVENT = {
@@ -47,7 +52,7 @@ export const TAB_STATUS = {
  * @constant {Object} DEFAULT_CONFIG the default config values
  */
 export const DEFAULT_CONFIG = {
-  isInIframe: false,
+  encryptionKey: ENCRYPTION_KEY,
   origin: window.origin || document.domain || '*',
   pingCheckinBuffer: PING_CHECKIN_BUFFER,
   pingInterval: PING_INTERVAL,

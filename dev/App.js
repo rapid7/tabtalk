@@ -2,6 +2,7 @@
 import createTab from '../src';
 
 const tab = createTab({
+  encryptionKey: 'CUSTOM_ENCRYPTION_KEY',
   onChildClose(child) {
     console.log('child closed', child);
   },

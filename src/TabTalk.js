@@ -36,6 +36,7 @@ import {
   getHasTimedOut
 } from './utils';
 
+const getEncryptionKey = get(['encryptionKey']);
 const getId = get(['id']);
 const getOrigin = get(['origin']);
 const getPingInterval = get(['pingInterval']);
@@ -47,12 +48,12 @@ const getRemoveOnClosed = get(['removeOnClosed']);
 const EXISTING_TAB = getOr(null, [TAB_REFERENCE_KEY], window);
 
 /**
- * @class Tab
+ * @class TabTalk
  *
  * @classdesc
  * manager that allows for communication both with opened children and with parents that opened it
  */
-class Tab {
+class TabTalk {
   /**
    * @function constructor
    *
@@ -62,7 +63,7 @@ class Tab {
    * @param {Object} config the configuration object
    * @param {Window} [ref=window] the reference to the tab's own window
    * @param {string} [windowName=window.name] the name for the given window
-   * @returns {Tab} the tab instance
+   * @returns {TabTalk} the tab instance
    */
   constructor(config, {id, ref = window, windowName = window.name}) {
     this.__children = [];
@@ -86,31 +87,31 @@ class Tab {
     removeStorageData(this.windowName);
 
     this.__clearPingIntervals();
+    this.__setSendPingInterval();
 
     if (ref === window) {
       this.__addEventListeners();
       this.__register();
       this.__setReceivePingInterval();
-      this.__setSendPingInterval();
     }
   }
 
   /**
-   * @type {Array<Tab>}
+   * @type {Array<TabTalk>}
    */
   get children() {
     return this.__children.slice(0);
   }
 
   /**
-   * @type {Array<Tab>}
+   * @type {Array<TabTalk>}
    */
   get closedChildren() {
     return filter(({status}) => status === TAB_STATUS.CLOSED, this.__children);
   }
 
   /**
-   * @type {Array<Tab>}
+   * @type {Array<TabTalk>}
    */
   get openChildren() {
     return filter(({status}) => status === TAB_STATUS.OPEN, this.__children);
@@ -118,14 +119,14 @@ class Tab {
 
   /**
    * @function __addChild
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
    * @description
    * add the child to the list of stored children
    *
-   * @param {Tab} child the child tab
+   * @param {TabTalk} child the child tab
    */
   __addChild(child) {
     this.__children.push(child);
@@ -133,7 +134,7 @@ class Tab {
 
   /**
    * @function __addEventListeners
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
@@ -169,7 +170,7 @@ class Tab {
 
   /**
    * @function __clearPingIntervals
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
@@ -183,14 +184,14 @@ class Tab {
 
   /**
    * @function __handleOnChildCommunicationMessage
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
    * @description
    * handle messages from child tabs
    *
-   * @param {Tab} [child] the child tab sending the message
+   * @param {TabTalk} [child] the child tab sending the message
    * @param {any} data the data send in the message
    * @returns {any} the message data
    */
@@ -200,7 +201,7 @@ class Tab {
 
   /**
    * @function __handleOnParentCommunicationMessage
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
@@ -217,7 +218,7 @@ class Tab {
 
   /**
    * @function __handlePingChildMessage
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
@@ -233,24 +234,25 @@ class Tab {
   }
 
   /**
-   * @function __handlePingParentMessage
-   * @memberof Tab
+   * @function __handlePingParentOrRegisterMessage
+   * @memberof TabTalk
    *
    * @private
    *
    * @description
-   * handle pings from a child tab
+   * handle pings or registration from a child tab, auto-registering if a ping comes
+   * from a child that does not currently exist
    *
-   * @param {Tab} [existingChild] the child sending the ping
+   * @param {TabTalk} [existingChild] the child sending the ping
    * @param {string} id the id of the child tab
    * @param {number} lastParentCheckin the epoch of the last checkin time
    * @param {Window} source the window of the child tab
-   * @returns {Tab} the child tab
+   * @returns {TabTalk} the child tab
    */
-  __handlePingParentMessage({child: existingChild, id, lastCheckin, source}) {
+  __handlePingParentOrRegisterMessage({child: existingChild, id, lastCheckin, source}) {
     const child =
       existingChild
-      || new Tab(this.config, {
+      || new TabTalk(this.config, {
         id,
         ref: source,
         windowName: getChildWindowName(id, this.id),
@@ -258,42 +260,23 @@ class Tab {
 
     if (child !== existingChild) {
       this.__addChild(child);
+
+      call(['onChildRegister'], [child], this.config);
     }
 
     return (child.lastCheckin = lastCheckin) && child;
   }
 
   /**
-   * @function __handleRegisterMessage
-   * @memberof Tab
-   *
-   * @private
-   *
-   * @description
-   * handle the registration of the child tab
-   *
-   * @param {Object} payload the payload of the message
-   * @param {Tab} payload.child the child tab
-   * @param {string} payload.id the id of the origin tab
-   * @param {number} payload.lastCheckin the last checkin of the child tab
-   * @param {Window} payload.source the window of the child tab
-   */
-  __handleRegisterMessage(payload) {
-    const child = this.__handlePingParentMessage(payload);
-
-    call(['onChildRegister'], [child], this.config);
-  }
-
-  /**
    * @function __handleSetStatusMessage
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
    * @description
    * handle the setting of tab status
    *
-   * @param {Tab} child the child tab
+   * @param {TabTalk} child the child tab
    * @param {string} status the new status of the tab
    */
   __handleSetStatusMessage({child, status}) {
@@ -314,7 +297,7 @@ class Tab {
 
   /**
    * @function __handleMessage
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
@@ -337,22 +320,15 @@ class Tab {
       const child = findChildTab(this.__children, id);
 
       return (
-        decrypt(data, TAB_REFERENCE_KEY)
+        decrypt(data, getEncryptionKey(this.config))
           .then((decrypted) => {
             switch (event) {
               case EVENT.PING_CHILD:
                 return this.__handlePingChildMessage(decrypted);
 
               case EVENT.PING_PARENT:
-                return this.__handlePingParentMessage({
-                  child,
-                  id,
-                  lastCheckin: decrypted,
-                  source,
-                });
-
               case EVENT.REGISTER:
-                return this.__handleRegisterMessage({
+                return this.__handlePingParentOrRegisterMessage({
                   child,
                   id,
                   lastCheckin: decrypted,
@@ -385,7 +361,7 @@ class Tab {
 
   /**
    * @function __register
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
@@ -403,14 +379,14 @@ class Tab {
 
   /**
    * @function __removeChild
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
    * @description
    * remove the child from the stored children
    *
-   * @param {Tab} child the child tab
+   * @param {TabTalk} child the child tab
    */
   __removeChild(child) {
     this.__children.splice(this.children.indexOf(child), 1);
@@ -418,7 +394,7 @@ class Tab {
 
   /**
    * @function _sendToChild
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
@@ -441,7 +417,7 @@ class Tab {
             childId,
             data,
           },
-          TAB_REFERENCE_KEY
+          getEncryptionKey(this.config)
         ).then((encrypted) =>
           child.ref.postMessage(
             JSON.stringify({
@@ -452,13 +428,13 @@ class Tab {
             getOrigin(this.config)
           )
         )
-        : Promise.reject(new Error('Tab is closed.'))
+        : Promise.reject(new Error('TabTalk is closed.'))
       : Promise.reject(new Error('Child could not be found.'));
   }
 
   /**
    * @function __sendToChildren
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
@@ -475,7 +451,7 @@ class Tab {
 
   /**
    * @function __sendToParent
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
@@ -488,14 +464,14 @@ class Tab {
    */
   __sendToParent(event, data = null) {
     return this.parent
-      ? encrypt(data, TAB_REFERENCE_KEY).then((encrypted) =>
+      ? encrypt(data, getEncryptionKey(this.config)).then((encrypted) =>
         this.parent.postMessage(
           JSON.stringify({
             data: encrypted,
             event,
             id: this.id,
           }),
-          this.config.origin
+          getOrigin(this.config)
         )
       )
       : Promise.reject(new Error('Parent could not be found.'));
@@ -503,7 +479,7 @@ class Tab {
 
   /**
    * @function __setReceivePingInterval
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
@@ -530,7 +506,7 @@ class Tab {
 
   /**
    * @function __setSendPingInterval
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @private
    *
@@ -557,7 +533,7 @@ class Tab {
 
   /**
    * @function close
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @description
    * close the child tab with the given id
@@ -586,18 +562,18 @@ class Tab {
 
   /**
    * @function open
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @description
    * open the tab with the given options
    *
    * @param {string} url the url to open
-   * @param {string} windowOptions the options to open the window with
+   * @param {string} windowFeatures the options to open the window with
    * @returns {Promise} promise that resolves to the opened tab
    */
-  open({url, windowOptions}) {
-    return new Promise((resolve) => resolve(window.open(url, '_blank', windowOptions))).then((childWindow) => {
-      const child = new Tab(this.config, {
+  open({config = this.config, url, windowFeatures}) {
+    return new Promise((resolve) => resolve(window.open(url, '_blank', windowFeatures))).then((childWindow) => {
+      const child = new TabTalk(config, {
         ref: childWindow,
       });
 
@@ -612,7 +588,7 @@ class Tab {
 
   /**
    * @function sendToChild
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @description
    * send data to a specific child
@@ -627,7 +603,7 @@ class Tab {
 
   /**
    * @function sendToChildren
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @description
    * send data to all children
@@ -641,7 +617,7 @@ class Tab {
 
   /**
    * @function sendToParent
-   * @memberof Tab
+   * @memberof TabTalk
    *
    * @description
    * send data to the parent
@@ -654,4 +630,4 @@ class Tab {
   }
 }
 
-export default Tab;
+export default TabTalk;
