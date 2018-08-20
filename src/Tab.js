@@ -32,7 +32,8 @@ import {
   findChildTab,
   filter,
   map,
-  getChildWindowName
+  getChildWindowName,
+  getHasTimedOut
 } from './utils';
 
 const getId = get(['id']);
@@ -86,11 +87,10 @@ class Tab {
 
     this.__clearPingIntervals();
 
-    this.__setReceivePingInterval();
-
     if (ref === window) {
       this.__addEventListeners();
       this.__register();
+      this.__setReceivePingInterval();
       this.__setSendPingInterval();
     }
   }
@@ -331,51 +331,53 @@ class Tab {
       const {data, event, id} = JSON.parse(eventData);
 
       if (origin !== getOrigin(this.config) || !event || event !== EVENT[event]) {
-        return null;
+        return;
       }
 
       const child = findChildTab(this.__children, id);
 
-      decrypt(data, TAB_REFERENCE_KEY)
-        .then((decrypted) => {
-          switch (event) {
-            case EVENT.PING_CHILD:
-              return this.__handlePingChildMessage(decrypted);
+      return (
+        decrypt(data, TAB_REFERENCE_KEY)
+          .then((decrypted) => {
+            switch (event) {
+              case EVENT.PING_CHILD:
+                return this.__handlePingChildMessage(decrypted);
 
-            case EVENT.PING_PARENT:
-              return this.__handlePingParentMessage({
-                child,
-                id,
-                lastCheckin: decrypted,
-                source,
-              });
+              case EVENT.PING_PARENT:
+                return this.__handlePingParentMessage({
+                  child,
+                  id,
+                  lastCheckin: decrypted,
+                  source,
+                });
 
-            case EVENT.REGISTER:
-              return this.__handleRegisterMessage({
-                child,
-                id,
-                lastCheckin: decrypted,
-                source,
-              });
+              case EVENT.REGISTER:
+                return this.__handleRegisterMessage({
+                  child,
+                  id,
+                  lastCheckin: decrypted,
+                  source,
+                });
 
-            case EVENT.SET_TAB_STATUS:
-              return this.__handleSetStatusMessage({
-                child,
-                status: decrypted,
-              });
+              case EVENT.SET_TAB_STATUS:
+                return this.__handleSetStatusMessage({
+                  child,
+                  status: decrypted,
+                });
 
-            case EVENT.CHILD_COMMUNICATION:
-              return this.__handleOnChildCommunicationMessage({
-                child,
-                data: decrypted,
-              });
+              case EVENT.CHILD_COMMUNICATION:
+                return this.__handleOnChildCommunicationMessage({
+                  child,
+                  data: decrypted,
+                });
 
-            case EVENT.PARENT_COMMUNICATION:
-              return this.__handleOnParentCommunicationMessage(decrypted);
-          }
-        })
-        // eslint-disable-next-line no-console
-        .catch((error) => console.error(error));
+              case EVENT.PARENT_COMMUNICATION:
+                return this.__handleOnParentCommunicationMessage(decrypted);
+            }
+          })
+          // eslint-disable-next-line no-console
+          .catch((error) => console.error(error))
+      );
     } catch (error) {
       // ignored
     }
@@ -509,19 +511,21 @@ class Tab {
    * set the interval to check for pings received from child tabs
    */
   __setReceivePingInterval() {
-    this.receivePingInterval = setInterval(() => {
-      this.__children.forEach((child) => {
-        if (child.status === TAB_STATUS.CLOSED) {
-          return;
-        }
+    clearInterval(this.receivePingInterval);
 
-        const hasTimedOut = child.lastCheckin
-          ? child.lastCheckin < this.config.pingInterval + this.config.pingCheckinBuffer
-          : child.created + this.config.registrationBuffer < Date.now();
-
-        return hasTimedOut && (child.status = TAB_STATUS.CLOSED);
-      });
-    }, getPingInterval(this.config));
+    this.receivePingInterval = setInterval(
+      () =>
+        map(
+          (child) =>
+            getHasTimedOut(child, this.config)
+            && this.__handleSetStatusMessage({
+              child,
+              status: TAB_STATUS.CLOSED,
+            }),
+          this.openChildren
+        ),
+      getPingInterval(this.config)
+    );
   }
 
   /**
@@ -534,6 +538,8 @@ class Tab {
    * set the interval to send pings to children and / or parent
    */
   __setSendPingInterval() {
+    clearInterval(this.sendPingInterval);
+
     this.sendPingInterval = setInterval(() => {
       const lastCheckin = Date.now();
 
@@ -541,7 +547,9 @@ class Tab {
 
       if (this.parent) {
         this.__sendToParent(EVENT.PING_PARENT, lastCheckin);
-      } else if (this.__children.length) {
+      }
+
+      if (this.__children.length) {
         this.__sendToChildren(EVENT.PING_CHILD, lastCheckin);
       }
     }, getPingInterval(this.config));
@@ -563,13 +571,17 @@ class Tab {
 
     const child = findChildTab(this.__children, id);
 
-    if (!child) {
+    if (!child || child.status !== TAB_STATUS.OPEN) {
       return;
     }
 
+    child.status = TAB_STATUS.CLOSED;
+
     call(['close'], [], child.ref);
 
-    this.__removeChild(child);
+    if (getRemoveOnClosed(this.config)) {
+      this.__removeChild(child);
+    }
   }
 
   /**

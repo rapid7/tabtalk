@@ -1,6 +1,9 @@
 // test
 import test from 'ava';
-import {decrypt, encrypt} from 'krip';
+import {
+  decrypt,
+  encrypt
+} from 'krip';
 import sinon from 'sinon';
 
 // src
@@ -13,6 +16,8 @@ import {
   TAB_STATUS
 } from 'src/constants';
 import * as storage from 'src/sessionStorage';
+
+import * as utils from 'src/utils';
 
 test('if the new tab instance has the correct properties', (t) => {
   window.name = '';
@@ -517,7 +522,62 @@ test('if __handlePingChildMessage will not call onParentCommunication if the chi
   sendPingStub.restore();
 });
 
-test.todo('__handlePingParentMessage');
+test('if __handlePingParentMessage will set the lastCheckin of the existing child', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+  const child = new Tab(config, {
+    ref: tab.ref,
+    windowName: 'child',
+  });
+
+  const payload = {
+    child,
+    id: child.id,
+    lastCheckin: Date.now(),
+    source: child.ref,
+  };
+
+  const result = tab.__handlePingParentMessage(payload);
+
+  t.is(child.lastCheckin, payload.lastCheckin);
+  t.is(result, child);
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test('if __handlePingParentMessage will create and add a child before setting the lastCheckin of the new child', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const addStub = sinon.stub(Tab.prototype, '__addChild');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  const payload = {
+    id: 'childId',
+    lastCheckin: Date.now(),
+    source: tab.ref,
+  };
+
+  const child = tab.__handlePingParentMessage(payload);
+
+  t.true(addStub.calledOnce);
+  t.true(addStub.calledWith(child));
+
+  addStub.restore();
+
+  t.is(child.lastCheckin, payload.lastCheckin);
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
 
 test('if __handleRegisterMessage will call do the same as the ping parent message', (t) => {
   const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
@@ -547,9 +607,705 @@ test('if __handleRegisterMessage will call do the same as the ping parent messag
   sendPingStub.restore();
 });
 
-test.todo('__handleSetStatusMessage');
+test('if __handleSetStatusMessage will set the status of the child', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
 
-test.todo('__handleMessage');
+  const removeStub = sinon.stub(Tab.prototype, '__removeChild');
+
+  const config = {
+    onChildClose: sinon.spy(),
+  };
+
+  const tab = new Tab(config, {});
+  const child = new Tab(config, {windowName: 'child'});
+
+  tab.__addChild(child);
+
+  const payload = {
+    child,
+    status: TAB_STATUS.CLOSED,
+  };
+
+  tab.__handleSetStatusMessage(payload);
+
+  t.is(child.status, payload.status);
+
+  t.true(config.onChildClose.calledOnce);
+  t.true(config.onChildClose.calledWith(child));
+
+  t.true(removeStub.notCalled);
+
+  removeStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test('if __handleSetStatusMessage will remove the child if closed and requested in the config', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const removeStub = sinon.stub(Tab.prototype, '__removeChild');
+
+  const config = {
+    onChildClose: sinon.spy(),
+    removeOnClosed: true,
+  };
+
+  const tab = new Tab(config, {});
+  const child = new Tab(config, {windowName: 'child'});
+
+  tab.__addChild(child);
+
+  const payload = {
+    child,
+    status: TAB_STATUS.CLOSED,
+  };
+
+  tab.__handleSetStatusMessage(payload);
+
+  t.is(child.status, payload.status);
+
+  t.true(config.onChildClose.calledOnce);
+  t.true(config.onChildClose.calledWith(child));
+
+  t.true(removeStub.calledOnce);
+  t.true(removeStub.calledWith(child));
+
+  removeStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test('if __handleSetStatusMessage will not call close methods when the status is set to open', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const removeStub = sinon.stub(Tab.prototype, '__removeChild');
+
+  const config = {
+    onChildClose: sinon.spy(),
+    removeOnClosed: true,
+  };
+
+  const tab = new Tab(config, {});
+  const child = new Tab(config, {windowName: 'child'});
+
+  child.status = TAB_STATUS.CLOSED;
+
+  tab.__addChild(child);
+
+  const payload = {
+    child,
+    status: TAB_STATUS.OPEN,
+  };
+
+  tab.__handleSetStatusMessage(payload);
+
+  t.is(child.status, payload.status);
+
+  t.true(config.onChildClose.notCalled);
+
+  t.true(removeStub.notCalled);
+
+  removeStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test('if __handleSetStatusMessage will do nothing if no child is passed', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const removeStub = sinon.stub(Tab.prototype, '__removeChild');
+
+  const config = {
+    onChildClose: sinon.spy(),
+    removeOnClosed: true,
+  };
+
+  const tab = new Tab(config, {});
+  const child = new Tab(config, {windowName: 'child'});
+
+  tab.__addChild(child);
+
+  const payload = {
+    child: null,
+    status: TAB_STATUS.CLOSED,
+  };
+
+  tab.__handleSetStatusMessage(payload);
+
+  t.true(config.onChildClose.notCalled);
+
+  t.true(removeStub.notCalled);
+
+  removeStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if __handleMessage will call the correct handler when the PING_CHILD event is sent', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const pingChildStub = sinon.stub(Tab.prototype, '__handlePingChildMessage');
+  const pingParentStub = sinon.stub(Tab.prototype, '__handlePingParentMessage');
+  const registerStub = sinon.stub(Tab.prototype, '__handleRegisterMessage');
+  const setStatusStub = sinon.stub(Tab.prototype, '__handleSetStatusMessage');
+  const childCommunicationStub = sinon.stub(Tab.prototype, '__handleOnChildCommunicationMessage');
+  const parentCommunicationStub = sinon.stub(Tab.prototype, '__handleOnParentCommunicationMessage');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  const rawData = 'data';
+  const data = await encrypt(rawData, TAB_REFERENCE_KEY);
+
+  const payload = {
+    data: JSON.stringify({
+      data,
+      event: EVENT.PING_CHILD,
+    }),
+    origin: tab.config.origin,
+    source: tab.ref,
+  };
+
+  await tab.__handleMessage(payload);
+
+  t.true(pingChildStub.calledOnce);
+  t.true(pingChildStub.calledWith(rawData));
+
+  t.true(pingParentStub.notCalled);
+
+  t.true(registerStub.notCalled);
+
+  t.true(setStatusStub.notCalled);
+
+  t.true(childCommunicationStub.notCalled);
+
+  t.true(parentCommunicationStub.notCalled);
+
+  pingChildStub.restore();
+  pingParentStub.restore();
+  registerStub.restore();
+  setStatusStub.restore();
+  childCommunicationStub.restore();
+  parentCommunicationStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if __handleMessage will call the correct handler when the PING_PARENT event is sent', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const pingChildStub = sinon.stub(Tab.prototype, '__handlePingChildMessage');
+  const pingParentStub = sinon.stub(Tab.prototype, '__handlePingParentMessage');
+  const registerStub = sinon.stub(Tab.prototype, '__handleRegisterMessage');
+  const setStatusStub = sinon.stub(Tab.prototype, '__handleSetStatusMessage');
+  const childCommunicationStub = sinon.stub(Tab.prototype, '__handleOnChildCommunicationMessage');
+  const parentCommunicationStub = sinon.stub(Tab.prototype, '__handleOnParentCommunicationMessage');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+  const child = new Tab(config, {windowName: 'child'});
+
+  tab.__addChild(child);
+
+  const rawData = 'data';
+  const data = await encrypt(rawData, TAB_REFERENCE_KEY);
+
+  const payload = {
+    data: JSON.stringify({
+      data,
+      event: EVENT.PING_PARENT,
+      id: child.id,
+    }),
+    origin: tab.config.origin,
+    source: tab.ref,
+  };
+
+  await tab.__handleMessage(payload);
+
+  t.true(pingChildStub.notCalled);
+
+  t.true(pingParentStub.calledOnce);
+  t.true(pingParentStub.calledWith({
+    child,
+    id: JSON.parse(payload.data).id,
+    lastCheckin: rawData,
+    source: payload.source,
+  }));
+
+  t.true(registerStub.notCalled);
+
+  t.true(setStatusStub.notCalled);
+
+  t.true(childCommunicationStub.notCalled);
+
+  t.true(parentCommunicationStub.notCalled);
+
+  pingChildStub.restore();
+  pingParentStub.restore();
+  registerStub.restore();
+  setStatusStub.restore();
+  childCommunicationStub.restore();
+  parentCommunicationStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if __handleMessage will call the correct handler when the REGISTER event is sent', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const pingChildStub = sinon.stub(Tab.prototype, '__handlePingChildMessage');
+  const pingParentStub = sinon.stub(Tab.prototype, '__handlePingParentMessage');
+  const registerStub = sinon.stub(Tab.prototype, '__handleRegisterMessage');
+  const setStatusStub = sinon.stub(Tab.prototype, '__handleSetStatusMessage');
+  const childCommunicationStub = sinon.stub(Tab.prototype, '__handleOnChildCommunicationMessage');
+  const parentCommunicationStub = sinon.stub(Tab.prototype, '__handleOnParentCommunicationMessage');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+  const child = new Tab(config, {windowName: 'child'});
+
+  tab.__addChild(child);
+
+  const rawData = 'data';
+  const data = await encrypt(rawData, TAB_REFERENCE_KEY);
+
+  const payload = {
+    data: JSON.stringify({
+      data,
+      event: EVENT.REGISTER,
+      id: child.id,
+    }),
+    origin: tab.config.origin,
+    source: tab.ref,
+  };
+
+  await tab.__handleMessage(payload);
+
+  t.true(pingChildStub.notCalled);
+
+  t.true(pingParentStub.notCalled);
+
+  t.true(registerStub.calledOnce);
+  t.true(registerStub.calledWith({
+    child,
+    id: JSON.parse(payload.data).id,
+    lastCheckin: rawData,
+    source: payload.source,
+  }));
+
+  t.true(setStatusStub.notCalled);
+
+  t.true(childCommunicationStub.notCalled);
+
+  t.true(parentCommunicationStub.notCalled);
+
+  pingChildStub.restore();
+  pingParentStub.restore();
+  registerStub.restore();
+  setStatusStub.restore();
+  childCommunicationStub.restore();
+  parentCommunicationStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if __handleMessage will call the correct handler when the SET_STATUS event is sent', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const pingChildStub = sinon.stub(Tab.prototype, '__handlePingChildMessage');
+  const pingParentStub = sinon.stub(Tab.prototype, '__handlePingParentMessage');
+  const registerStub = sinon.stub(Tab.prototype, '__handleRegisterMessage');
+  const setStatusStub = sinon.stub(Tab.prototype, '__handleSetStatusMessage');
+  const childCommunicationStub = sinon.stub(Tab.prototype, '__handleOnChildCommunicationMessage');
+  const parentCommunicationStub = sinon.stub(Tab.prototype, '__handleOnParentCommunicationMessage');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+  const child = new Tab(config, {windowName: 'child'});
+
+  tab.__addChild(child);
+
+  const rawData = 'data';
+  const data = await encrypt(rawData, TAB_REFERENCE_KEY);
+
+  const payload = {
+    data: JSON.stringify({
+      data,
+      event: EVENT.SET_TAB_STATUS,
+      id: child.id,
+    }),
+    origin: tab.config.origin,
+    source: tab.ref,
+  };
+
+  await tab.__handleMessage(payload);
+
+  t.true(pingChildStub.notCalled);
+
+  t.true(pingParentStub.notCalled);
+
+  t.true(registerStub.notCalled);
+
+  t.true(setStatusStub.calledOnce);
+  t.true(setStatusStub.calledWith({
+    child,
+    status: rawData,
+  }));
+
+  t.true(childCommunicationStub.notCalled);
+
+  t.true(parentCommunicationStub.notCalled);
+
+  pingChildStub.restore();
+  pingParentStub.restore();
+  registerStub.restore();
+  setStatusStub.restore();
+  childCommunicationStub.restore();
+  parentCommunicationStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if __handleMessage will call the correct handler when the CHILD_COMMUNICATION event is sent', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const pingChildStub = sinon.stub(Tab.prototype, '__handlePingChildMessage');
+  const pingParentStub = sinon.stub(Tab.prototype, '__handlePingParentMessage');
+  const registerStub = sinon.stub(Tab.prototype, '__handleRegisterMessage');
+  const setStatusStub = sinon.stub(Tab.prototype, '__handleSetStatusMessage');
+  const childCommunicationStub = sinon.stub(Tab.prototype, '__handleOnChildCommunicationMessage');
+  const parentCommunicationStub = sinon.stub(Tab.prototype, '__handleOnParentCommunicationMessage');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+  const child = new Tab(config, {windowName: 'child'});
+
+  tab.__addChild(child);
+
+  const rawData = 'data';
+  const data = await encrypt(rawData, TAB_REFERENCE_KEY);
+
+  const payload = {
+    data: JSON.stringify({
+      data,
+      event: EVENT.CHILD_COMMUNICATION,
+      id: child.id,
+    }),
+    origin: tab.config.origin,
+    source: tab.ref,
+  };
+
+  await tab.__handleMessage(payload);
+
+  t.true(pingChildStub.notCalled);
+
+  t.true(pingParentStub.notCalled);
+
+  t.true(registerStub.notCalled);
+
+  t.true(setStatusStub.notCalled);
+
+  t.true(childCommunicationStub.calledOnce);
+  t.true(childCommunicationStub.calledWith({
+    child,
+    data: rawData,
+  }));
+
+  t.true(parentCommunicationStub.notCalled);
+
+  pingChildStub.restore();
+  pingParentStub.restore();
+  registerStub.restore();
+  setStatusStub.restore();
+  childCommunicationStub.restore();
+  parentCommunicationStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if __handleMessage will call the correct handler when the PARENT_COMMUNICATION event is sent', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const pingChildStub = sinon.stub(Tab.prototype, '__handlePingChildMessage');
+  const pingParentStub = sinon.stub(Tab.prototype, '__handlePingParentMessage');
+  const registerStub = sinon.stub(Tab.prototype, '__handleRegisterMessage');
+  const setStatusStub = sinon.stub(Tab.prototype, '__handleSetStatusMessage');
+  const childCommunicationStub = sinon.stub(Tab.prototype, '__handleOnChildCommunicationMessage');
+  const parentCommunicationStub = sinon.stub(Tab.prototype, '__handleOnParentCommunicationMessage');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+  const child = new Tab(config, {windowName: 'child'});
+
+  tab.__addChild(child);
+
+  const rawData = 'data';
+  const data = await encrypt(rawData, TAB_REFERENCE_KEY);
+
+  const payload = {
+    data: JSON.stringify({
+      data,
+      event: EVENT.PARENT_COMMUNICATION,
+      id: child.id,
+    }),
+    origin: tab.config.origin,
+    source: tab.ref,
+  };
+
+  await tab.__handleMessage(payload);
+
+  t.true(pingChildStub.notCalled);
+
+  t.true(pingParentStub.notCalled);
+
+  t.true(registerStub.notCalled);
+
+  t.true(setStatusStub.notCalled);
+
+  t.true(childCommunicationStub.notCalled);
+
+  t.true(parentCommunicationStub.calledOnce);
+  t.true(parentCommunicationStub.calledWith(rawData));
+
+  pingChildStub.restore();
+  pingParentStub.restore();
+  registerStub.restore();
+  setStatusStub.restore();
+  childCommunicationStub.restore();
+  parentCommunicationStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if __handleMessage will do nothing if the origin does not match', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const pingChildStub = sinon.stub(Tab.prototype, '__handlePingChildMessage');
+  const pingParentStub = sinon.stub(Tab.prototype, '__handlePingParentMessage');
+  const registerStub = sinon.stub(Tab.prototype, '__handleRegisterMessage');
+  const setStatusStub = sinon.stub(Tab.prototype, '__handleSetStatusMessage');
+  const childCommunicationStub = sinon.stub(Tab.prototype, '__handleOnChildCommunicationMessage');
+  const parentCommunicationStub = sinon.stub(Tab.prototype, '__handleOnParentCommunicationMessage');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+  const child = new Tab(config, {windowName: 'child'});
+
+  tab.__addChild(child);
+
+  const payload = {
+    data: 'data',
+    origin: 'maliciousOrigin',
+    source: tab.ref,
+  };
+
+  await tab.__handleMessage(payload);
+
+  t.true(pingChildStub.notCalled);
+
+  t.true(pingParentStub.notCalled);
+
+  t.true(registerStub.notCalled);
+
+  t.true(setStatusStub.notCalled);
+
+  t.true(childCommunicationStub.notCalled);
+
+  t.true(parentCommunicationStub.notCalled);
+
+  pingChildStub.restore();
+  pingParentStub.restore();
+  registerStub.restore();
+  setStatusStub.restore();
+  childCommunicationStub.restore();
+  parentCommunicationStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if __handleMessage will do nothing if the event is not in the event data', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const pingChildStub = sinon.stub(Tab.prototype, '__handlePingChildMessage');
+  const pingParentStub = sinon.stub(Tab.prototype, '__handlePingParentMessage');
+  const registerStub = sinon.stub(Tab.prototype, '__handleRegisterMessage');
+  const setStatusStub = sinon.stub(Tab.prototype, '__handleSetStatusMessage');
+  const childCommunicationStub = sinon.stub(Tab.prototype, '__handleOnChildCommunicationMessage');
+  const parentCommunicationStub = sinon.stub(Tab.prototype, '__handleOnParentCommunicationMessage');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+  const child = new Tab(config, {windowName: 'child'});
+
+  tab.__addChild(child);
+
+  const payload = {
+    data: 'data',
+    origin: tab.config.orgin,
+    source: tab.ref,
+  };
+
+  await tab.__handleMessage(payload);
+
+  t.true(pingChildStub.notCalled);
+
+  t.true(pingParentStub.notCalled);
+
+  t.true(registerStub.notCalled);
+
+  t.true(setStatusStub.notCalled);
+
+  t.true(childCommunicationStub.notCalled);
+
+  t.true(parentCommunicationStub.notCalled);
+
+  pingChildStub.restore();
+  pingParentStub.restore();
+  registerStub.restore();
+  setStatusStub.restore();
+  childCommunicationStub.restore();
+  parentCommunicationStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if __handleMessage will do nothing if the event is not valid', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const pingChildStub = sinon.stub(Tab.prototype, '__handlePingChildMessage');
+  const pingParentStub = sinon.stub(Tab.prototype, '__handlePingParentMessage');
+  const registerStub = sinon.stub(Tab.prototype, '__handleRegisterMessage');
+  const setStatusStub = sinon.stub(Tab.prototype, '__handleSetStatusMessage');
+  const childCommunicationStub = sinon.stub(Tab.prototype, '__handleOnChildCommunicationMessage');
+  const parentCommunicationStub = sinon.stub(Tab.prototype, '__handleOnParentCommunicationMessage');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+  const child = new Tab(config, {windowName: 'child'});
+
+  tab.__addChild(child);
+
+  const payload = {
+    data: JSON.stringify({
+      event: 'maliciousEvent',
+    }),
+    origin: tab.config.orgin,
+    source: tab.ref,
+  };
+
+  await tab.__handleMessage(payload);
+
+  t.true(pingChildStub.notCalled);
+
+  t.true(pingParentStub.notCalled);
+
+  t.true(registerStub.notCalled);
+
+  t.true(setStatusStub.notCalled);
+
+  t.true(childCommunicationStub.notCalled);
+
+  t.true(parentCommunicationStub.notCalled);
+
+  pingChildStub.restore();
+  pingParentStub.restore();
+  registerStub.restore();
+  setStatusStub.restore();
+  childCommunicationStub.restore();
+  parentCommunicationStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if __handleMessage handle the decryption rejection by logging in console', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const pingChildStub = sinon.stub(Tab.prototype, '__handlePingChildMessage');
+  const pingParentStub = sinon.stub(Tab.prototype, '__handlePingParentMessage');
+  const registerStub = sinon.stub(Tab.prototype, '__handleRegisterMessage');
+  const setStatusStub = sinon.stub(Tab.prototype, '__handleSetStatusMessage');
+  const childCommunicationStub = sinon.stub(Tab.prototype, '__handleOnChildCommunicationMessage');
+  const parentCommunicationStub = sinon.stub(Tab.prototype, '__handleOnParentCommunicationMessage');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  const payload = {
+    data: JSON.stringify({
+      data: 'data',
+      event: EVENT.PARENT_COMMUNICATION,
+    }),
+    origin: tab.config.origin,
+    source: tab.ref,
+  };
+
+  const consoleStub = sinon.stub(console, 'error');
+
+  await tab.__handleMessage(payload);
+
+  t.true(pingChildStub.notCalled);
+
+  t.true(pingParentStub.notCalled);
+
+  t.true(registerStub.notCalled);
+
+  t.true(setStatusStub.notCalled);
+
+  t.true(childCommunicationStub.notCalled);
+
+  t.true(parentCommunicationStub.notCalled);
+
+  pingChildStub.restore();
+  pingParentStub.restore();
+  registerStub.restore();
+  setStatusStub.restore();
+  childCommunicationStub.restore();
+  parentCommunicationStub.restore();
+
+  t.true(consoleStub.calledOnce);
+
+  consoleStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
 
 test('if __register will call onRegister in the config', (t) => {
   const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
@@ -676,6 +1432,51 @@ test.serial('if __sendToChild will send the encrypted message to the child via p
   sendPingStub.restore();
 });
 
+test.serial('if __sendToChild will send the encrypted message to the child via postMessage with defaults', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.__children = [
+    {
+      id: 'foo',
+      ref: {
+        postMessage: sinon.spy(),
+      },
+      status: TAB_STATUS.OPEN,
+    },
+    {
+      id: 'bar',
+      status: TAB_STATUS.CLOSED,
+    },
+  ];
+
+  const id = tab.__children[0].id;
+  const event = EVENT.PING_CHILD;
+
+  await tab.__sendToChild(id, event);
+
+  t.true(tab.__children[0].ref.postMessage.calledOnce);
+
+  const [message, origin] = tab.__children[0].ref.postMessage.args[0];
+
+  const parsedMessage = JSON.parse(message);
+
+  const decryptedData = await decrypt(parsedMessage.data, TAB_REFERENCE_KEY);
+
+  t.deepEqual(decryptedData, {
+    childId: id,
+    data: null,
+  });
+  t.is(origin, tab.config.origin);
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
 test.serial('if __sendToChild will reject if no child is found', async (t) => {
   const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
   const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
@@ -695,7 +1496,7 @@ test.serial('if __sendToChild will reject if no child is found', async (t) => {
 
     t.is(error.message, 'Child could not be found.');
   } catch (error) {
-    t.pass(error); 
+    t.pass(error);
   }
 
   receivePingStub.restore();
@@ -776,6 +1577,41 @@ test.serial('if __sendToChildren will iterate over the open children and call __
   sendPingStub.restore();
 });
 
+test.serial('if __sendToChildren will iterate over the open children and call __sendToChild with defaults', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+  const sendStub = sinon.stub(Tab.prototype, '__sendToChild').resolves();
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.__children = [
+    {
+      id: 'foo',
+      status: TAB_STATUS.OPEN,
+    },
+    {
+      id: 'bar',
+      status: TAB_STATUS.CLOSED,
+    },
+  ];
+
+  const event = EVENT.PING_CHILD;
+
+  const result = await tab.__sendToChildren(event);
+
+  t.true(sendStub.calledOnce);
+  t.true(sendStub.calledWith(tab.__children[0].id, event, null));
+
+  t.is(result.length, 1);
+
+  sendStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
 test.serial('if __sendToParent will send the encrypted message to the parent via postMessage', async (t) => {
   const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
   const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
@@ -819,6 +1655,48 @@ test.serial('if __sendToParent will send the encrypted message to the parent via
   sendPingStub.restore();
 });
 
+test.serial('if __sendToParent will send the encrypted message to the parent via postMessage with defaults', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.__children = [
+    {
+      id: 'foo',
+      status: TAB_STATUS.OPEN,
+    },
+    {
+      id: 'bar',
+      status: TAB_STATUS.CLOSED,
+    },
+  ];
+
+  tab.parent = {
+    postMessage: sinon.spy(),
+  };
+
+  const event = EVENT.PING_PARENT;
+
+  await tab.__sendToParent(event);
+
+  t.true(tab.parent.postMessage.calledOnce);
+
+  const [message, origin] = tab.parent.postMessage.args[0];
+
+  const parsedMessage = JSON.parse(message);
+
+  const decryptedData = await decrypt(parsedMessage.data, TAB_REFERENCE_KEY);
+
+  t.deepEqual(decryptedData, null);
+  t.is(origin, tab.config.origin);
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
 test.serial('if __sendToParent will reject if there is no parent', async (t) => {
   const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
   const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
@@ -853,13 +1731,378 @@ test.serial('if __sendToParent will reject if there is no parent', async (t) => 
   sendPingStub.restore();
 });
 
-test.todo('__setReceivePingInterval');
+test('if __setReceivePingInterval will set the interval to set the tab status to closed if timed out', (t) => {
+  const receivePingInterval = 123;
 
-test.todo('__setSendPingInterval');
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(receivePingInterval);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
 
-test.todo('close');
+  const config = {};
 
-test.todo('open');
+  const tab = new Tab(config, {});
+
+  tab.__children = [
+    {
+      id: 'foo',
+      lastCheckin: 123456789000,
+      status: TAB_STATUS.OPEN,
+    },
+    {
+      id: 'foo',
+      lastCheckin: Date.now() + tab.config.pingInterval,
+      status: TAB_STATUS.OPEN,
+    },
+    {
+      id: 'bar',
+      status: TAB_STATUS.CLOSED,
+    },
+  ];
+
+  receivePingStub.restore();
+
+  const clearIntervalStub = sinon.stub(global, 'clearInterval');
+  const setIntervalStub = sinon.stub(global, 'setInterval').returns(receivePingInterval);
+
+  tab.__setReceivePingInterval();
+
+  t.true(clearIntervalStub.calledOnce);
+
+  clearIntervalStub.restore();
+
+  t.true(setIntervalStub.calledOnce);
+
+  const [fn, interval] = setIntervalStub.args[0];
+
+  fn();
+
+  t.is(tab.openChildren.length, 1);
+
+  setIntervalStub.restore();
+
+  t.is(interval, tab.config.pingInterval);
+
+  sendPingStub.restore();
+});
+
+test('if __setSendPingInterval will set the interval to notify parent and children', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const sendParentStub = sinon.stub(Tab.prototype, '__sendToParent');
+  const sendChildrenStub = sinon.stub(Tab.prototype, '__sendToChildren');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.__children = [
+    {
+      id: 'foo',
+      lastCheckin: 123456789000,
+      status: TAB_STATUS.OPEN,
+    },
+    {
+      id: 'bar',
+      status: TAB_STATUS.CLOSED,
+    },
+  ];
+  tab.parent = {};
+
+  sendPingStub.restore();
+
+  const clearIntervalStub = sinon.stub(global, 'clearInterval');
+  const setIntervalStub = sinon.stub(global, 'setInterval').returns(345);
+
+  tab.__setSendPingInterval();
+
+  t.true(clearIntervalStub.calledOnce);
+
+  clearIntervalStub.restore();
+
+  t.true(setIntervalStub.calledOnce);
+
+  const [fn, interval] = setIntervalStub.args[0];
+
+  fn();
+
+  t.true(sendParentStub.calledOnce);
+  t.true(sendParentStub.calledWith(EVENT.PING_PARENT, tab.lastCheckin));
+
+  sendParentStub.restore();
+
+  t.true(sendChildrenStub.calledOnce);
+  t.true(sendChildrenStub.calledWith(EVENT.PING_CHILD, tab.lastCheckin));
+
+  sendChildrenStub.restore();
+
+  t.is(interval, tab.config.pingInterval);
+
+  setIntervalStub.restore();
+
+  receivePingStub.restore();
+});
+
+test('if __setSendPingInterval will set the interval to not notify anyone if no parent or children', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const sendParentStub = sinon.stub(Tab.prototype, '__sendToParent');
+  const sendChildrenStub = sinon.stub(Tab.prototype, '__sendToChildren');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.__children = [];
+  tab.parent = null;
+
+  sendPingStub.restore();
+
+  const clearIntervalStub = sinon.stub(global, 'clearInterval');
+  const setIntervalStub = sinon.stub(global, 'setInterval').returns(345);
+
+  tab.__setSendPingInterval();
+
+  t.true(clearIntervalStub.calledOnce);
+
+  clearIntervalStub.restore();
+
+  t.true(setIntervalStub.calledOnce);
+
+  const [fn, interval] = setIntervalStub.args[0];
+
+  fn();
+
+  t.true(sendParentStub.notCalled);
+
+  sendParentStub.restore();
+
+  t.true(sendChildrenStub.notCalled);
+
+  sendChildrenStub.restore();
+
+  t.is(interval, tab.config.pingInterval);
+
+  setIntervalStub.restore();
+
+  receivePingStub.restore();
+});
+
+test('if close will call close on the tab ref if no id is passed', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const removeStub = sinon.stub(Tab.prototype, '__removeChild');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.ref.close = sinon.stub();
+
+  const id = null;
+
+  tab.close(id);
+
+  t.true(tab.ref.close.calledOnce);
+
+  t.true(removeStub.notCalled);
+
+  removeStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test('if close will not close anything if no child is found based on the id', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const removeStub = sinon.stub(Tab.prototype, '__removeChild');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.ref.close = sinon.stub();
+
+  const child = new Tab(config, {windowName: 'child'});
+
+  child.parent = tab.ref;
+  child.ref.close = sinon.stub();
+
+  tab.__children = [child];
+
+  const id = 'otherId';
+
+  tab.close(id);
+
+  t.true(tab.ref.close.notCalled);
+
+  t.true(removeStub.notCalled);
+
+  t.true(child.ref.close.notCalled);
+
+  removeStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test('if close will not close anything if the child found is already closed', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const removeStub = sinon.stub(Tab.prototype, '__removeChild');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.ref.close = sinon.stub();
+
+  const child = new Tab(config, {windowName: 'child'});
+
+  child.parent = tab.ref;
+  child.ref.close = sinon.stub();
+  child.status = TAB_STATUS.CLOSED;
+
+  tab.__children = [child];
+
+  const id = tab.__children[0].id;
+
+  tab.close(id);
+
+  t.true(tab.ref.close.notCalled);
+
+  t.true(child.ref.close.notCalled);
+
+  t.true(removeStub.notCalled);
+
+  removeStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test('if close will close the child if found and open', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const removeStub = sinon.stub(Tab.prototype, '__removeChild');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.ref.close = sinon.stub();
+
+  const child = new Tab(config, {windowName: 'child'});
+
+  child.parent = tab.ref;
+  child.ref.close = sinon.stub();
+
+  tab.__children = [child];
+
+  const id = tab.__children[0].id;
+
+  tab.close(id);
+
+  t.true(tab.ref.close.calledOnce);
+
+  t.true(child.ref.close.calledOnce);
+
+  t.true(child.ref.close.calledOnce);
+
+  t.is(child.status, TAB_STATUS.CLOSED);
+
+  t.true(removeStub.notCalled);
+
+  removeStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test('if close will close the child if found and open and remove if requested in the config', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const removeStub = sinon.stub(Tab.prototype, '__removeChild');
+
+  const config = {
+    removeOnClosed: true,
+  };
+
+  const tab = new Tab(config, {});
+
+  tab.ref.close = sinon.stub();
+
+  const child = new Tab(config, {windowName: 'child'});
+
+  child.parent = tab.ref;
+  child.ref.close = sinon.stub();
+
+  tab.__children = [child];
+
+  const id = tab.__children[0].id;
+
+  tab.close(id);
+
+  t.true(tab.ref.close.calledOnce);
+
+  t.true(child.ref.close.calledOnce);
+
+  t.true(child.ref.close.calledOnce);
+
+  t.is(child.status, TAB_STATUS.CLOSED);
+
+  t.true(removeStub.calledOnce);
+  t.true(removeStub.calledWith(child));
+
+  removeStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if open will open the window and add the child', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const childWindow = {
+    name: '',
+  };
+
+  const windowOpenStub = sinon.stub(window, 'open').returns(childWindow);
+  const addStub = sinon.stub(Tab.prototype, '__addChild');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  const openConfig = {
+    url: 'http://www.example.com',
+  };
+
+  const child = await tab.open(openConfig);
+
+  t.true(windowOpenStub.calledOnce);
+  t.true(windowOpenStub.calledWith(openConfig.url, '_blank', openConfig.windowOptions));
+
+  windowOpenStub.restore();
+
+  t.is(childWindow[TAB_REFERENCE_KEY], child);
+  t.is(childWindow.name, utils.getChildWindowName(child.id, tab.id));
+
+  t.true(addStub.calledOnce);
+  t.true(addStub.calledWith(child));
+
+  addStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
 
 test('if sendToChild will call __sendToChild with the correct event', (t) => {
   const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
@@ -879,6 +2122,30 @@ test('if sendToChild will call __sendToChild with the correct event', (t) => {
 
   t.true(sendStub.calledOnce);
   t.true(sendStub.calledWith(id, EVENT.PARENT_COMMUNICATION, data));
+
+  sendStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test('if sendToChild will call __sendToChild with the correct event with defaults', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+  const sendStub = sinon.stub(Tab.prototype, '__sendToChild');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  sendStub.reset();
+
+  const id = 'id';
+
+  tab.sendToChild(id);
+
+  t.true(sendStub.calledOnce);
+  t.true(sendStub.calledWith(id, EVENT.PARENT_COMMUNICATION, null));
 
   sendStub.restore();
 
@@ -910,6 +2177,50 @@ test('if sendToChildren will call __sendToChildren with the correct event', (t) 
   sendPingStub.restore();
 });
 
+test('if sendToChildren will call __sendToChildren with the correct event and defaults', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+  const sendStub = sinon.stub(Tab.prototype, '__sendToChildren');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  sendStub.reset();
+
+  tab.sendToChildren();
+
+  t.true(sendStub.calledOnce);
+  t.true(sendStub.calledWith(EVENT.PARENT_COMMUNICATION, null));
+
+  sendStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test('if sendToChildren will call __sendToChildren with the correct event and defaults', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+  const sendStub = sinon.stub(Tab.prototype, '__sendToChildren');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  sendStub.reset();
+
+  tab.sendToChildren();
+
+  t.true(sendStub.calledOnce);
+  t.true(sendStub.calledWith(EVENT.PARENT_COMMUNICATION, null));
+
+  sendStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
 test('if sendToParent will call __sendToParent with the correct event', (t) => {
   const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
   const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
@@ -927,6 +2238,28 @@ test('if sendToParent will call __sendToParent with the correct event', (t) => {
 
   t.true(sendStub.calledOnce);
   t.true(sendStub.calledWith(EVENT.CHILD_COMMUNICATION, data));
+
+  sendStub.restore();
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test('if sendToParent will call __sendToParent with the correct event with defaults', (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+  const sendStub = sinon.stub(Tab.prototype, '__sendToParent');
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  sendStub.reset();
+
+  tab.sendToParent();
+
+  t.true(sendStub.calledOnce);
+  t.true(sendStub.calledWith(EVENT.CHILD_COMMUNICATION, null));
 
   sendStub.restore();
 

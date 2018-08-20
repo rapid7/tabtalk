@@ -136,3 +136,18 @@ export const findChildTab = (children, id) => find(({id: childId}) => childId ==
  * @returns {string} the child window name
  */
 export const getChildWindowName = (childId, parentId) => `${SESSION_STORAGE_KEY}:CHILD_${childId}_OF_${parentId}`;
+
+/**
+ * @function getHasTimedOut
+ *
+ * @description
+ * determine if the child has timed out
+ *
+ * @param {Tab} child the child tab
+ * @param {Object} config the configuration of the parent
+ * @returns {boolean} has the child timed out
+ */
+export const getHasTimedOut = (child, config) =>
+  child.lastCheckin
+    ? child.lastCheckin < Date.now() - config.pingInterval - config.pingCheckinBuffer
+    : child.created + config.registrationBuffer < Date.now();

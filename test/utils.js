@@ -3,7 +3,10 @@ import test from 'ava';
 
 // src
 import * as utils from 'src/utils';
-import {SESSION_STORAGE_KEY} from 'src/constants';
+import {
+  DEFAULT_CONFIG,
+  SESSION_STORAGE_KEY
+} from 'src/constants';
 
 test('if map will perform the same function as the native map', (t) => {
   const array = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -68,4 +71,36 @@ test('if getChildWindowName will compile the windowName correctly', (t) => {
   const result = utils.getChildWindowName(childId, parentId);
 
   t.is(result, `${SESSION_STORAGE_KEY}:CHILD_${childId}_OF_${parentId}`);
+});
+
+test('if getHasTimedOut will return true if the childs last checkin was more than the interval + buffer', (t) => {
+  const child = {
+    lastCheckin: Date.now() - DEFAULT_CONFIG.pingInterval - DEFAULT_CONFIG.pingCheckinBuffer - 1000,
+  };
+
+  t.true(utils.getHasTimedOut(child, DEFAULT_CONFIG));
+});
+
+test('if getHasTimedOut will return false if the childs last checkin was less than the interval + buffer', (t) => {
+  const child = {
+    lastCheckin: Date.now() - DEFAULT_CONFIG.pingInterval - DEFAULT_CONFIG.pingCheckinBuffer + 1000,
+  };
+
+  t.false(utils.getHasTimedOut(child, DEFAULT_CONFIG));
+});
+
+test('if getHasTimedOut will return true if the childhas never checked in but created was more than the registration buffer', (t) => {
+  const child = {
+    created: Date.now() - DEFAULT_CONFIG.registrationBuffer - 1000,
+  };
+
+  t.true(utils.getHasTimedOut(child, DEFAULT_CONFIG));
+});
+
+test('if getHasTimedOut will return false if the childhas never checked in but created was less than the registration buffer', (t) => {
+  const child = {
+    created: Date.now() - DEFAULT_CONFIG.registrationBuffer + 1000,
+  };
+
+  t.false(utils.getHasTimedOut(child, DEFAULT_CONFIG));
 });
