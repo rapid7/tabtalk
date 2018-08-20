@@ -42,7 +42,7 @@ Messages are sent by `postMessage`, allowing for cross-origin usage (with the us
 createTab([config: Object]): TabTalk
 ```
 
-Creates a new `TabTalk` instance where the window it is executed is the tab. The instance returned allows you to open children, and will automatically glean its parent if it was opened from another `TabTalk` instance.
+Creates a new `TabTalk` instance where the window it is executed in (itself) is the tab. The instance returned allows you to open children, and will automatically glean its parent if it was opened from another `TabTalk` instance.
 
 #### config
 
