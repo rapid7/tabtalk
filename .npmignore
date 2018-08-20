@@ -2,7 +2,7 @@
 .git
 .nyc_output
 coverage
-DEV_ONLY
+dev
 mocks
 src
 test
