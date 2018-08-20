@@ -450,8 +450,8 @@ class Tab {
             getOrigin(this.config)
           )
         )
-        : Promise.reject('Tab is closed.')
-      : Promise.reject('Child could not be found.');
+        : Promise.reject(new Error('Tab is closed.'))
+      : Promise.reject(new Error('Child could not be found.'));
   }
 
   /**
@@ -496,7 +496,7 @@ class Tab {
           this.config.origin
         )
       )
-      : Promise.reject('Parent could not be found.');
+      : Promise.reject(new Error('Parent could not be found.'));
   }
 
   /**

@@ -1,5 +1,6 @@
 // test
 import test from 'ava';
+import {decrypt, encrypt} from 'krip';
 import sinon from 'sinon';
 
 // src
@@ -8,6 +9,7 @@ import {
   DEFAULT_CONFIG,
   EVENT,
   SESSION_STORAGE_KEY,
+  TAB_REFERENCE_KEY,
   TAB_STATUS
 } from 'src/constants';
 import * as storage from 'src/sessionStorage';
@@ -628,7 +630,115 @@ test('if __removeChild will remove the child from the internal children', (t) =>
   sendPingStub.restore();
 });
 
-test.todo('__sendToChild');
+test.serial('if __sendToChild will send the encrypted message to the child via postMessage', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.__children = [
+    {
+      id: 'foo',
+      ref: {
+        postMessage: sinon.spy(),
+      },
+      status: TAB_STATUS.OPEN,
+    },
+    {
+      id: 'bar',
+      status: TAB_STATUS.CLOSED,
+    },
+  ];
+
+  const id = tab.__children[0].id;
+  const event = EVENT.PING_CHILD;
+  const data = 'data';
+
+  await tab.__sendToChild(id, event, data);
+
+  t.true(tab.__children[0].ref.postMessage.calledOnce);
+
+  const [message, origin] = tab.__children[0].ref.postMessage.args[0];
+
+  const parsedMessage = JSON.parse(message);
+
+  const decryptedData = await decrypt(parsedMessage.data, TAB_REFERENCE_KEY);
+
+  t.deepEqual(decryptedData, {
+    childId: id,
+    data,
+  });
+  t.is(origin, tab.config.origin);
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if __sendToChild will reject if no child is found', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.__children = [];
+
+  const id = 'id';
+  const event = EVENT.PING_CHILD;
+  const data = 'data';
+
+  try {
+    await tab.__sendToChild(id, event, data);
+
+    t.is(error.message, 'Child could not be found.');
+  } catch (error) {
+    t.pass(error); 
+  }
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if __sendToChild will reject if no child is found', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.__children = [
+    {
+      id: 'foo',
+      ref: {
+        postMessage: sinon.spy(),
+      },
+      status: TAB_STATUS.OPEN,
+    },
+    {
+      id: 'bar',
+      status: TAB_STATUS.CLOSED,
+    },
+  ];
+
+  const id = tab.__children[1].id;
+  const event = EVENT.PING_CHILD;
+  const data = 'data';
+
+  try {
+    await tab.__sendToChild(id, event, data);
+
+    t.fail('Should reject');
+  } catch (error) {
+    t.is(error.message, 'Tab is closed.');
+  }
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
 
 test.serial('if __sendToChildren will iterate over the open children and call __sendToChild', async (t) => {
   const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
@@ -666,7 +776,82 @@ test.serial('if __sendToChildren will iterate over the open children and call __
   sendPingStub.restore();
 });
 
-test.todo('__sendToParent');
+test.serial('if __sendToParent will send the encrypted message to the parent via postMessage', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.__children = [
+    {
+      id: 'foo',
+      status: TAB_STATUS.OPEN,
+    },
+    {
+      id: 'bar',
+      status: TAB_STATUS.CLOSED,
+    },
+  ];
+
+  tab.parent = {
+    postMessage: sinon.spy(),
+  };
+
+  const event = EVENT.PING_PARENT;
+  const data = 'data';
+
+  await tab.__sendToParent(event, data);
+
+  t.true(tab.parent.postMessage.calledOnce);
+
+  const [message, origin] = tab.parent.postMessage.args[0];
+
+  const parsedMessage = JSON.parse(message);
+
+  const decryptedData = await decrypt(parsedMessage.data, TAB_REFERENCE_KEY);
+
+  t.deepEqual(decryptedData, data);
+  t.is(origin, tab.config.origin);
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test.serial('if __sendToParent will reject if there is no parent', async (t) => {
+  const receivePingStub = sinon.stub(Tab.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(Tab.prototype, '__setSendPingInterval').returns(234);
+
+  const config = {};
+
+  const tab = new Tab(config, {});
+
+  tab.__children = [
+    {
+      id: 'foo',
+      status: TAB_STATUS.OPEN,
+    },
+    {
+      id: 'bar',
+      status: TAB_STATUS.CLOSED,
+    },
+  ];
+
+  const event = EVENT.PING_PARENT;
+  const data = 'data';
+
+  try {
+    await tab.__sendToParent(event, data);
+
+    t.fail('Should reject');
+  } catch (error) {
+    t.is(error.message, 'Parent could not be found.');
+  }
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
 
 test.todo('__setReceivePingInterval');
 
