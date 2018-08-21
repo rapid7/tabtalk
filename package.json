@@ -73,6 +73,7 @@
   ],
   "license": "MIT",
   "main": "lib/index.js",
+  "module": "es/index.js",
   "name": "tabtalk",
   "repository": {
     "type": "git",
