@@ -258,9 +258,11 @@ class TabTalk {
         windowName: getChildWindowName(id, this.id),
       });
 
-    if (!child.lastCheckin) {
+    if (child !== existingChild) {
       this.__addChild(child);
+    }
 
+    if (!child.lastCheckin) {
       call(['onChildRegister'], [child], this.config);
     }
 
