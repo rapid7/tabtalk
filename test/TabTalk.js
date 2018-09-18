@@ -536,6 +536,8 @@ test('if __handlePingParentOrRegisterMessage will set the lastCheckin of the exi
     windowName: 'child',
   });
 
+  child.lastCheckin = 12345;
+
   const payload = {
     child,
     id: child.id,
@@ -549,6 +551,39 @@ test('if __handlePingParentOrRegisterMessage will set the lastCheckin of the exi
   t.is(result, child);
 
   t.true(config.onChildRegister.notCalled);
+
+  receivePingStub.restore();
+  sendPingStub.restore();
+});
+
+test('if __handlePingParentOrRegisterMessage will call onRegister if the child has never checked in', (t) => {
+  const receivePingStub = sinon.stub(TabTalk.prototype, '__setReceivePingInterval').returns(123);
+  const sendPingStub = sinon.stub(TabTalk.prototype, '__setSendPingInterval').returns(234);
+
+  const config = {
+    onChildRegister: sinon.spy(),
+  };
+
+  const tab = new TabTalk(config, {});
+  const child = new TabTalk(config, {
+    ref: tab.ref,
+    windowName: 'child',
+  });
+
+  const payload = {
+    child,
+    id: child.id,
+    lastCheckin: Date.now(),
+    source: child.ref,
+  };
+
+  const result = tab.__handlePingParentOrRegisterMessage(payload);
+
+  t.is(child.lastCheckin, payload.lastCheckin);
+  t.is(result, child);
+
+  t.true(config.onChildRegister.calledOnce);
+  t.true(config.onChildRegister.calledWith(child));
 
   receivePingStub.restore();
   sendPingStub.restore();
